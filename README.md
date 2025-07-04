@@ -7,7 +7,9 @@
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![Issues](https://img.shields.io/github/issues/hybridvamp/SubAdderGUI)](https://github.com/hybridvamp/SubAdderGUI/issues)
 
-A sleek, modern Python application to add subtitle tracks to MKV files using FFmpeg. It supports drag-and-drop, automatic update checking, and a Material-UI-inspired interface.
+A sleek, modern Python application to add subtitle tracks to MKV files using FFmpeg. It supports drag-and-drop, automatic update checking, Git fallback, and a Material-UI-inspired interface.
+
+🔔 **Stay updated**: [t.me/hybridupdates](https://t.me/hybridupdates)
 
 ---
 
@@ -17,7 +19,8 @@ A sleek, modern Python application to add subtitle tracks to MKV files using FFm
 * ✅ Supports multiple subtitle formats: `.srt`, `.ass`, `.sub`, `.pgs`.
 * ✅ Modern dark mode interface with Material-UI styling.
 * ✅ Drag & drop support for quick file selection.
-* ✅ Automatic update checker (pulls latest version from GitHub).
+* ✅ Automatic update checker (Git pull or ZIP fallback).
+* ✅ Automatically downloads and configures FFmpeg if missing.
 * ✅ Cross-platform (Windows, macOS, Linux).
 
 ---
@@ -25,8 +28,7 @@ A sleek, modern Python application to add subtitle tracks to MKV files using FFm
 ## 📦 Requirements
 
 * Python 3.8+
-* FFmpeg (must be installed and added to system PATH)
-* Internet connection (for update checking)
+* Internet connection (for update checking and FFmpeg download)
 
 ### Python Dependencies
 
@@ -47,38 +49,23 @@ pip install -r requirements.txt
 
 ## 🛠 Installation & Usage
 
-### 1️⃣ Install FFmpeg
+### 1️⃣ Run the App
 
-* Download FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html) or use a package manager.
-* Add FFmpeg to your system PATH.
-
-### 2️⃣ Clone the Repository
-
-```bash
-git clone https://github.com/hybridvamp/SubAdderGUI.git
-cd SubAdderGUI
-```
-
-### 3️⃣ Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4️⃣ Run the App
+* Double-click `subs.py` (Python must be associated) or run:
 
 ```bash
 python subs.py
 ```
 
-Or double-click the `subs.py` file (Python must be associated).
+If FFmpeg is not detected, it will automatically download and configure it in the app folder.
 
 ---
 
 ## 🔄 Update Checker
 
 * The app includes a **Check for Updates** button.
-* If a new version is found, it allows you to update and restart automatically.
+* It uses `git pull` if cloned from GitHub or downloads a ZIP fallback.
+* If up-to-date, the button will disable and show **✅ Up-to-date**.
 
 ---
 
@@ -86,7 +73,7 @@ Or double-click the `subs.py` file (Python must be associated).
 
 ```
 SubAdderGUI/
-├── subs.py               # Main application
+├── subs.py              # Main application
 ├── requirements.txt      # Python dependencies
 ├── version.txt           # Current version
 └── README.md             # Project documentation
@@ -96,7 +83,7 @@ SubAdderGUI/
 
 ## 📜 License
 
-GNU GENERAL PUBLIC LICENSE © 2025 HybridVamp
+MIT License © 2025 HybridVamp
 
 ---
 
@@ -104,6 +91,7 @@ GNU GENERAL PUBLIC LICENSE © 2025 HybridVamp
 
 * [GitHub Repo](https://github.com/hybridvamp/SubAdderGUI)
 * [FFmpeg Downloads](https://ffmpeg.org/download.html)
+* [Telegram Channel](https://t.me/hybridupdates)
 
 ---
 
