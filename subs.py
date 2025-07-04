@@ -214,7 +214,7 @@ class SubtitleApp(QWidget):
     def update_and_restart(self):
         try:
             # Download latest release zip from GitHub
-            response = requests.get(f"{GITHUB_REPO}/archive/refs/heads/main.zip")
+            response = requests.get(f"{GITHUB_REPO}/archive/refs/heads/main.zip", timeout=10)
             temp_dir = tempfile.mkdtemp()
             zip_path = os.path.join(temp_dir, "update.zip")
             with open(zip_path, "wb") as f:
@@ -223,7 +223,7 @@ class SubtitleApp(QWidget):
             # Extract and replace files
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(temp_dir)
-            extracted_folder = os.path.join(temp_dir, os.listdir(temp_dir)[1])  # skip zip file itself
+            extracted_folder = [os.path.join(temp_dir, d) for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))][0]
             for item in os.listdir(extracted_folder):
                 src = os.path.join(extracted_folder, item)
                 dst = os.path.join(os.getcwd(), item)
@@ -233,9 +233,14 @@ class SubtitleApp(QWidget):
                     shutil.move(src, dst)
                 else:
                     shutil.move(src, dst)
+
             QMessageBox.information(self, "Update Complete", "✅ Updated successfully. Restarting...")
+            # Restart safely
+            python_exe = sys.executable
+            script_path = os.path.realpath(__file__)
             QApplication.quit()
-            os.execl(sys.executable, sys.executable, *sys.argv)
+            subprocess.Popen([python_exe, script_path], cwd=os.getcwd())
+            sys.exit(0)
         except Exception as e:
             QMessageBox.critical(self, "Update Failed", f"❌ Failed to update: {e}")
 
