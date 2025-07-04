@@ -1,258 +1,236 @@
 import sys
-import subprocess
 import os
-import shutil
-import requests
-import zipfile
+import subprocess
 import tempfile
-
+import shutil
+import zipfile
+import requests
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton,
-    QFileDialog, QLineEdit, QProgressBar, QTextEdit, QMessageBox, QHBoxLayout
+    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog,
+    QLineEdit, QMessageBox, QHBoxLayout
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
 
-# === GitHub Repo URL ===
 GITHUB_REPO = "https://github.com/hybridvamp/SubAdderGUI"
-VERSION_FILE_URL = f"{GITHUB_REPO}/raw/main/version.txt"
+FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+VERSION_FILE = "version.txt"
 
 
-def get_local_version():
-    """Read local version from version.txt"""
-    version_file = os.path.join(os.getcwd(), "version.txt")
-    if os.path.exists(version_file):
-        with open(version_file, "r") as f:
-            return f.read().strip()
-    return "0.0.0"  # fallback if version file missing
-
-
-def get_latest_version():
-    try:
-        response = requests.get(f"{GITHUB_REPO}/raw/main/version.txt", timeout=5, headers={"Cache-Control": "no-cache"})
-        response.raise_for_status()
-        return response.text.strip()
-    except Exception as e:
-        print(f"⚠ Failed to fetch version: {e}")
-        return None
-
-
-class FFmpegWorker(QThread):
-    progress = pyqtSignal(str)
-    finished = pyqtSignal(bool, str)
-
-    def __init__(self, mkv_file, sub_file, lang_code, parent=None):
-        super().__init__(parent)
-        self.mkv_file = mkv_file
-        self.sub_file = sub_file
-        self.lang_code = lang_code
-
-    def run(self):
-        output_file = self.mkv_file.rsplit(".", 1)[0] + "_subbed.mkv"
-
-        cmd = [
-            "ffmpeg", "-y", "-i", self.mkv_file, "-i", self.sub_file,
-            "-map", "0", "-map", "1",
-            "-c:v", "copy", "-c:a", "copy",
-            "-c:s", "copy", "-c:s:1", "srt",
-            f"-metadata:s:s:1", f"language={self.lang_code}",
-            f"-metadata:s:s:1", f"title={self.lang_code} Subtitles",
-            output_file
-        ]
-
-        try:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            for line in process.stdout:
-                self.progress.emit(line.strip())
-            process.wait()
-            if process.returncode == 0:
-                self.finished.emit(True, output_file)
-            else:
-                self.finished.emit(False, "FFmpeg failed.")
-        except Exception as e:
-            self.finished.emit(False, str(e))
-
-
-class SubtitleApp(QWidget):
+class SubAdderGUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🎥 SubAdder GUI (FFmpeg)")
-        self.setGeometry(300, 200, 700, 500)
-        self.setAcceptDrops(True)
+        self.setWindowTitle("SubAdderGUI")
+        self.setWindowIcon(QIcon.fromTheme("video-x-generic"))
+        self.setGeometry(300, 300, 500, 300)
         self.setStyleSheet("""
-            QWidget { background-color: #121212; color: #FFFFFF; font-family: "Segoe UI"; font-size: 14px; }
-            QPushButton { background-color: #1F1F1F; border-radius: 10px; padding: 10px; }
-            QPushButton:hover { background-color: #333333; }
-            QLineEdit { background-color: #1E1E1E; border-radius: 8px; padding: 6px; }
-            QTextEdit { background-color: #1E1E1E; border-radius: 8px; }
-            QProgressBar { border-radius: 10px; text-align: center; background-color: #1F1F1F; }
-            QProgressBar::chunk { background-color: #BB86FC; border-radius: 10px; }
+            QWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                font-size: 14px;
+                border-radius: 12px;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                border: none;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #505050;
+            }
+            QLineEdit {
+                background-color: #2b2b2b;
+                border: none;
+                border-radius: 8px;
+                padding: 8px;
+            }
         """)
-        self.local_version = get_local_version()
+
         self.init_ui()
+        self.check_ffmpeg()
 
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # MKV File
-        mkv_layout = QHBoxLayout()
-        self.mkv_input = QLineEdit()
-        mkv_btn = QPushButton("Browse MKV")
-        mkv_btn.clicked.connect(self.browse_mkv)
-        mkv_layout.addWidget(QLabel("🎬 MKV File:"))
-        mkv_layout.addWidget(self.mkv_input)
-        mkv_layout.addWidget(mkv_btn)
+        self.info_label = QLabel("🎥 Add subtitle track to MKV file")
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.info_label)
 
-        # Subtitle File
-        sub_layout = QHBoxLayout()
-        self.sub_input = QLineEdit()
-        sub_btn = QPushButton("Browse Subtitle")
-        sub_btn.clicked.connect(self.browse_sub)
-        sub_layout.addWidget(QLabel("📝 Subtitle File:"))
-        sub_layout.addWidget(self.sub_input)
-        sub_layout.addWidget(sub_btn)
+        self.mkv_path_input = QLineEdit()
+        self.mkv_path_input.setPlaceholderText("Select MKV File...")
+        layout.addWidget(self.mkv_path_input)
 
-        # Language Code
-        lang_layout = QHBoxLayout()
-        self.lang_input = QLineEdit()
-        self.lang_input.setPlaceholderText("e.g., eng, spa")
-        lang_layout.addWidget(QLabel("🌐 Language Code:"))
-        lang_layout.addWidget(self.lang_input)
+        mkv_browse = QPushButton("Browse MKV")
+        mkv_browse.clicked.connect(self.select_mkv_file)
+        layout.addWidget(mkv_browse)
 
-        # Add Subtitles Button
-        self.add_btn = QPushButton("➕ Add Subtitles")
-        self.add_btn.clicked.connect(self.add_subtitles)
+        self.subtitle_path_input = QLineEdit()
+        self.subtitle_path_input.setPlaceholderText("Select Subtitle File (.srt/.ass)")
+        layout.addWidget(self.subtitle_path_input)
 
-        # Progress Bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)
+        subtitle_browse = QPushButton("Browse Subtitle")
+        subtitle_browse.clicked.connect(self.select_subtitle_file)
+        layout.addWidget(subtitle_browse)
 
-        # Log Area
-        self.log_area = QTextEdit()
-        self.log_area.setReadOnly(True)
+        self.track_name_input = QLineEdit()
+        self.track_name_input.setPlaceholderText("Enter Subtitle Track Name")
+        layout.addWidget(self.track_name_input)
 
-        # Check for Updates Button
-        self.update_btn = QPushButton(f"🔄 Check for Updates (v{self.local_version})")
-        self.update_btn.clicked.connect(self.check_for_updates)
+        add_button = QPushButton("➕ Add Subtitles")
+        add_button.clicked.connect(self.add_subtitles)
+        layout.addWidget(add_button)
 
-        # Add widgets to layout
-        layout.addLayout(mkv_layout)
-        layout.addLayout(sub_layout)
-        layout.addLayout(lang_layout)
-        layout.addWidget(self.add_btn)
-        layout.addWidget(self.progress_bar)
-        layout.addWidget(self.log_area)
-        layout.addWidget(self.update_btn)
+        self.update_button = QPushButton("🔄 Check for Updates")
+        self.update_button.clicked.connect(self.check_for_updates)
+        layout.addWidget(self.update_button)
 
         self.setLayout(layout)
 
-    def browse_mkv(self):
-        file, _ = QFileDialog.getOpenFileName(self, "Select MKV File", "", "MKV Files (*.mkv)")
-        if file:
-            self.mkv_input.setText(file)
+    def select_mkv_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select MKV File", "", "MKV Files (*.mkv)")
+        if file_path:
+            self.mkv_path_input.setText(file_path)
 
-    def browse_sub(self):
-        file, _ = QFileDialog.getOpenFileName(self, "Select Subtitle File", "", "Subtitle Files (*.srt *.ass *.sub *.pgs)")
-        if file:
-            self.sub_input.setText(file)
+    def select_subtitle_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Subtitle File", "", "Subtitle Files (*.srt *.ass)")
+        if file_path:
+            self.subtitle_path_input.setText(file_path)
+
+    def check_ffmpeg(self):
+        try:
+            subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            reply = QMessageBox.question(
+                self, "FFmpeg Not Found",
+                "FFmpeg is not installed or not in PATH.\n\nDo you want to download and use it locally?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.download_ffmpeg()
+            else:
+                sys.exit(1)
+
+    def download_ffmpeg(self):
+        try:
+            self.info_label.setText("⬇ Downloading FFmpeg...")
+            ffmpeg_zip = requests.get(FFMPEG_URL, stream=True)
+            temp_dir = tempfile.mkdtemp()
+            zip_path = os.path.join(temp_dir, "ffmpeg.zip")
+            with open(zip_path, "wb") as f:
+                for chunk in ffmpeg_zip.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(temp_dir)
+
+            ffmpeg_folder = next(os.path.join(temp_dir, d) for d in os.listdir(temp_dir) if "ffmpeg" in d.lower())
+            bin_folder = os.path.join(ffmpeg_folder, "bin")
+
+            for file in os.listdir(bin_folder):
+                shutil.move(os.path.join(bin_folder, file), os.getcwd())
+
+            QMessageBox.information(self, "FFmpeg Ready", "✅ FFmpeg downloaded and configured.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"❌ Failed to download FFmpeg:\n{e}")
+            sys.exit(1)
 
     def add_subtitles(self):
-        mkv_file = self.mkv_input.text()
-        sub_file = self.sub_input.text()
-        lang_code = self.lang_input.text().strip()
+        mkv_file = self.mkv_path_input.text()
+        subtitle_file = self.subtitle_path_input.text()
+        track_name = self.track_name_input.text()
 
-        if not mkv_file or not sub_file or not lang_code:
-            QMessageBox.warning(self, "Error", "Please fill all fields.")
+        if not os.path.isfile(mkv_file) or not os.path.isfile(subtitle_file):
+            QMessageBox.critical(self, "Error", "Please select valid MKV and subtitle files.")
             return
 
-        self.progress_bar.setValue(0)
-        self.log_area.clear()
+        output_file = os.path.splitext(mkv_file)[0] + "_subbed.mkv"
 
-        self.worker = FFmpegWorker(mkv_file, sub_file, lang_code)
-        self.worker.progress.connect(self.update_log)
-        self.worker.finished.connect(self.on_finished)
-        self.worker.start()
+        cmd = [
+            "ffmpeg", "-i", mkv_file, "-i", subtitle_file,
+            "-map", "0", "-map", "1",
+            "-c", "copy",
+            "-metadata:s:s:1", f"title={track_name}",
+            output_file
+        ]
 
-    def update_log(self, line):
-        self.log_area.append(line)
-        self.progress_bar.setValue(min(self.progress_bar.value() + 1, 100))
-
-    def on_finished(self, success, message):
-        if success:
-            QMessageBox.information(self, "Success", f"✅ Subtitles added successfully!\nOutput: {message}")
-            self.progress_bar.setValue(100)
-        else:
-            QMessageBox.critical(self, "Error", f"❌ Failed: {message}")
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        urls = event.mimeData().urls()
-        for url in urls:
-            filepath = url.toLocalFile()
-            if filepath.lower().endswith(".mkv"):
-                self.mkv_input.setText(filepath)
-            elif filepath.lower().endswith((".srt", ".ass", ".sub", ".pgs")):
-                self.sub_input.setText(filepath)
+        try:
+            subprocess.run(cmd, check=True)
+            QMessageBox.information(self, "Success", f"✅ Subtitle added successfully!\nSaved as: {output_file}")
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Error", f"❌ Failed to add subtitle:\n{e}")
 
     def check_for_updates(self):
-        latest_version = get_latest_version()
-        if not latest_version:
-            QMessageBox.warning(self, "Error", "Could not fetch latest version.")
-            return
-        if latest_version != self.local_version:
-            self.update_btn.setText("⬇️ Update & Restart")
-            self.update_btn.clicked.disconnect()
-            self.update_btn.clicked.connect(self.update_and_restart)
-            QMessageBox.information(self, "Update Available",
-                                    f"A new version ({latest_version}) is available.")
-        else:
-            QMessageBox.information(self, "Up to Date", "✅ SubAdderGUI is already up to date.")
+        try:
+            current_version = "0.1.0"
+            if os.path.exists(VERSION_FILE):
+                with open(VERSION_FILE, "r") as f:
+                    current_version = f.read().strip()
+
+            response = requests.get(f"{GITHUB_REPO}/raw/main/version.txt", timeout=5)
+            response.raise_for_status()
+            latest_version = response.text.strip()
+
+            if current_version == latest_version:
+                self.update_button.setText("✅ Up-to-date")
+                self.update_button.setEnabled(False)
+                QMessageBox.information(self, "No Updates", "🎉 You are already using the latest version.")
+            else:
+                self.update_button.setText("⬇ Update and Restart")
+                self.update_button.clicked.disconnect()
+                self.update_button.clicked.connect(self.update_and_restart)
+                QMessageBox.information(self, "Update Available", f"🆕 A new version ({latest_version}) is available.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"❌ Failed to check for updates:\n{e}")
 
     def update_and_restart(self):
         try:
-            # Download latest release zip from GitHub
-            response = requests.get(f"{GITHUB_REPO}/archive/refs/heads/main.zip", timeout=10)
-            temp_dir = tempfile.mkdtemp()
-            zip_path = os.path.join(temp_dir, "update.zip")
-            with open(zip_path, "wb") as f:
-                f.write(response.content)
+            app_dir = os.path.dirname(os.path.realpath(__file__))
 
-            # Extract and replace files
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(temp_dir)
-            extracted_folder = [os.path.join(temp_dir, d) for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))][0]
-            for item in os.listdir(extracted_folder):
-                src = os.path.join(extracted_folder, item)
-                app_dir = os.path.dirname(os.path.realpath(__file__))
-                dst = os.path.join(app_dir, item)
-                if os.path.isdir(src):
-                    if os.path.exists(dst):
-                        shutil.rmtree(dst)
-                    shutil.move(src, dst)
-                else:
-                    shutil.move(src, dst)
+            if os.path.exists(os.path.join(app_dir, ".git")):
+                result = subprocess.run(["git", "pull"], cwd=app_dir, capture_output=True, text=True)
+                if "Already up to date" in result.stdout:
+                    QMessageBox.information(self, "Up-to-date", "✅ You already have the latest version.")
+                    return
+                elif result.returncode != 0:
+                    raise Exception(f"Git pull failed:\n{result.stderr}")
+            else:
+                response = requests.get(f"{GITHUB_REPO}/archive/refs/heads/main.zip", timeout=10)
+                temp_dir = tempfile.mkdtemp()
+                zip_path = os.path.join(temp_dir, "update.zip")
+                with open(zip_path, "wb") as f:
+                    f.write(response.content)
 
-            # Overwrite local version.txt with the new version
+                with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                    zip_ref.extractall(temp_dir)
+
+                extracted_folder = [os.path.join(temp_dir, d) for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))][0]
+                for item in os.listdir(extracted_folder):
+                    src = os.path.join(extracted_folder, item)
+                    dst = os.path.join(app_dir, item)
+                    if os.path.isdir(src):
+                        if os.path.exists(dst):
+                            shutil.rmtree(dst)
+                        shutil.move(src, dst)
+                    else:
+                        shutil.move(src, dst)
+
             new_version = requests.get(f"{GITHUB_REPO}/raw/main/version.txt", timeout=10).text.strip()
-            version_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "version.txt")
-            with open(version_file, "w") as vf:
+            with open(os.path.join(app_dir, VERSION_FILE), "w") as vf:
                 vf.write(new_version)
-                
+
             QMessageBox.information(self, "Update Complete", "✅ Updated successfully. Restarting...")
-            # Restart safely
             python_exe = sys.executable
             script_path = os.path.realpath(__file__)
             QApplication.quit()
-            subprocess.Popen([python_exe, script_path], cwd=os.getcwd())
+            subprocess.Popen([python_exe, script_path], cwd=app_dir)
             sys.exit(0)
         except Exception as e:
-            QMessageBox.critical(self, "Update Failed", f"❌ Failed to update: {e}")
+            QMessageBox.critical(self, "Update Failed", f"❌ Failed to update:\n{e}")
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = SubtitleApp()
+    window = SubAdderGUI()
     window.show()
     sys.exit(app.exec())
