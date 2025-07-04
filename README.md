@@ -1,3 +1,5 @@
+![Banner](screenshots/banner.png)
+
 # SubAdderGUI
 
 🎥 **SubAdderGUI**
