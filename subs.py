@@ -27,14 +27,13 @@ def get_local_version():
 
 
 def get_latest_version():
-    """Fetch latest version from GitHub"""
     try:
-        response = requests.get(VERSION_FILE_URL, timeout=5)
-        if response.status_code == 200:
-            return response.text.strip()
-    except requests.RequestException:
+        response = requests.get(f"{GITHUB_REPO}/raw/main/version.txt", timeout=5, headers={"Cache-Control": "no-cache"})
+        response.raise_for_status()
+        return response.text.strip()
+    except Exception as e:
+        print(f"⚠ Failed to fetch version: {e}")
         return None
-    return None
 
 
 class FFmpegWorker(QThread):
@@ -235,6 +234,12 @@ class SubtitleApp(QWidget):
                 else:
                     shutil.move(src, dst)
 
+            # Overwrite local version.txt with the new version
+            new_version = requests.get(f"{GITHUB_REPO}/raw/main/version.txt", timeout=10).text.strip()
+            version_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "version.txt")
+            with open(version_file, "w") as vf:
+                vf.write(new_version)
+                
             QMessageBox.information(self, "Update Complete", "✅ Updated successfully. Restarting...")
             # Restart safely
             python_exe = sys.executable
