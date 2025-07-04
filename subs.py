@@ -226,7 +226,8 @@ class SubtitleApp(QWidget):
             extracted_folder = [os.path.join(temp_dir, d) for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))][0]
             for item in os.listdir(extracted_folder):
                 src = os.path.join(extracted_folder, item)
-                dst = os.path.join(os.getcwd(), item)
+                app_dir = os.path.dirname(os.path.realpath(__file__))
+                dst = os.path.join(app_dir, item)
                 if os.path.isdir(src):
                     if os.path.exists(dst):
                         shutil.rmtree(dst)
